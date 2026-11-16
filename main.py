@@ -818,7 +818,7 @@ class FuturesAnalyzerApp(App):
             "It is not sent automatically. Review it before sharing.",
             "Do not add API keys, API secrets, passwords, or account credentials.",
         ])
-        report_text = "\\n".join(report)
+        report_text = "\n".join(report)
 
         body = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
         report_input = TextInput(
