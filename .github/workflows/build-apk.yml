@@ -1,0 +1,88 @@
+name: Build Tabdeal APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout private application source
+        uses: actions/checkout@v4
+        with:
+          repository: alisolimani3221-art/tabdeal-pro-bot
+          ref: main
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: source
+
+      - name: Install Linux and Android build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk             autoconf automake autoconf-archive libtool libtool-bin m4 pkg-config             build-essential zlib1g-dev libncurses5-dev libffi-dev libssl-dev cmake             fonts-noto-core
+
+      - name: Bundle Persian and Latin fonts
+        working-directory: source
+        run: |
+          mkdir -p assets
+          SANS_FONT="$(find /usr/share/fonts -type f -iname 'NotoSansArabic-Regular.ttf' -print -quit)"
+          NASKH_FONT="$(find /usr/share/fonts -type f -iname 'NotoNaskhArabic-Regular.ttf' -print -quit)"
+          LATIN_FONT="$(find /usr/share/fonts -type f -iname 'NotoSans-Regular.ttf' -print -quit)"
+          if [ -n "$SANS_FONT" ]; then
+            cp "$SANS_FONT" assets/NotoSansArabic-Regular.ttf
+            cp "$SANS_FONT" NotoSansArabic-Regular.ttf
+          fi
+          if [ -n "$NASKH_FONT" ]; then
+            cp "$NASKH_FONT" assets/NotoNaskhArabic-Regular.ttf
+            cp "$NASKH_FONT" NotoNaskhArabic-Regular.ttf
+          fi
+          if [ -n "$LATIN_FONT" ]; then
+            cp "$LATIN_FONT" assets/NotoSans-Regular.ttf
+            cp "$LATIN_FONT" NotoSans-Regular.ttf
+          fi
+          test -s NotoSans-Regular.ttf
+          test -s NotoSansArabic-Regular.ttf -o -s NotoNaskhArabic-Regular.ttf
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run tests
+        working-directory: source
+        run: python -m unittest discover -s tests -v
+
+      - name: Install Buildozer
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install buildozer==1.5.0 cython==0.29.36
+
+      - name: Install Persian RTL dependencies
+        working-directory: source
+        run: |
+          python -m pip install --target vendor arabic-reshaper==3.0.0 python-bidi==0.4.2 future==1.0.0
+          python -m pip install fonttools
+
+      - name: Build debug APK
+        working-directory: source
+        run: buildozer android debug
+
+      - name: Verify APK and upload
+        working-directory: source
+        run: |
+          set -eu
+          APK="$(find bin -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+          unzip -l "$APK" | grep -Ei 'NotoSans|NotoNaskh|Roboto' || true
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tabdeal-Android-APK
+          path: source/bin/*.apk
+          if-no-files-found: error
+          retention-days: 7
