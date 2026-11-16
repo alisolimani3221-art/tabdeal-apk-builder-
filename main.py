@@ -29,6 +29,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 from kivy.uix.spinner import Spinner, SpinnerOption
 from kivy.core.window import Window
+from kivy.core.clipboard import Clipboard
 from kivy.core.text import LabelBase
 from kivy.resources import resource_add_path, resource_find
 from market_symbols import select_market_symbol, list_market_symbols
@@ -309,6 +310,18 @@ class FuturesAnalyzerApp(App):
                                    background_color=(0.08, 0.42, 0.68, 1), color=(1, 1, 1, 1))
         self.check_button.bind(on_press=self.show_status)
         root.add_widget(self.check_button)
+
+        # User-controlled support diagnostics: creates a local report only.
+        self.support_button = Button(
+            text=fa("گزارش عیب‌یابی برای پشتیبانی"),
+            font_name=FONT_NAME, font_size=sp(15),
+            size_hint_y=None, height=dp(46),
+            background_normal="", background_color=(0.22, 0.28, 0.38, 1),
+            color=(1, 1, 1, 1),
+        )
+        self.support_button.bind(on_press=self.open_support_diagnostics)
+        root.add_widget(self.support_button)
+        self.last_diagnostics = {}
         return root
 
     def make_label(self, text, size=15, color=(1, 1, 1, 1), height=dp(48)):
@@ -766,7 +779,84 @@ class FuturesAnalyzerApp(App):
         close_button.bind(on_press=popup.dismiss)
         popup.open()
 
+    def open_support_diagnostics(self, instance):
+        """Show a user-approved local diagnostic report; no remote access."""
+        try:
+            from kivy.utils import platform
+        except Exception:
+            platform = "unknown"
+
+        report = [
+            "Futures Analyzer - Support Diagnostic",
+            "App version: 1.6",
+            "Platform: {}".format(platform),
+            "Selected symbol: {}".format(getattr(self, "current_symbol", "unknown")),
+            "Persian font path: {}".format(FONT_PATH or "NOT FOUND"),
+            "Latin font path: {}".format(LATIN_FONT_PATH or "NOT FOUND"),
+            "Persian font load error: {}".format(FONT_LOAD_ERROR or "none"),
+            "Numeric font: {}".format(NUMERIC_FONT_NAME),
+            "Latest market price: {}".format(getattr(self, "latest_market_price", None)),
+            "",
+            "Last connection/API diagnostics:",
+        ]
+        diagnostics = getattr(self, "last_diagnostics", {}) or {}
+        if diagnostics:
+            for key in sorted(diagnostics):
+                value = diagnostics[key]
+                # Keep the report bounded and exclude anything resembling credentials.
+                key_text = str(key).lower()
+                if any(secret in key_text for secret in ("secret", "token", "api_key", "apikey", "authorization")):
+                    continue
+                rendered = repr(value)
+                report.append("{}: {}".format(key, rendered[:700]))
+        else:
+            report.append("No connection test has been run in this app session.")
+
+        report.extend([
+            "",
+            "Privacy: this report is created on this device only.",
+            "It is not sent automatically. Review it before sharing.",
+            "Do not add API keys, API secrets, passwords, or account credentials.",
+        ])
+        report_text = "\\n".join(report)
+
+        body = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
+        report_input = TextInput(
+            text=report_text, readonly=True, multiline=True,
+            font_name=NUMERIC_FONT_NAME, font_size=sp(11),
+            size_hint=(1, 1), background_color=(0.06, 0.08, 0.12, 1),
+            foreground_color=(0.92, 0.95, 1, 1),
+        )
+        body.add_widget(report_input)
+        actions = BoxLayout(orientation="horizontal", spacing=dp(8),
+                            size_hint_y=None, height=dp(46))
+        copy_button = Button(text=fa("کپی گزارش"), font_name=FONT_NAME)
+        close_button = Button(text=fa("بستن"), font_name=FONT_NAME)
+        actions.add_widget(copy_button)
+        actions.add_widget(close_button)
+        body.add_widget(actions)
+        popup = Popup(
+            title=fa("گزارش عیب‌یابی - با اجازه شما"),
+            title_font=FONT_NAME, content=body,
+            size_hint=(0.96, 0.88), auto_dismiss=False,
+        )
+
+        def copy_report(_button):
+            try:
+                Clipboard.copy(report_text)
+                _button.text = fa("گزارش کپی شد")
+            except Exception:
+                report_input.readonly = False
+                report_input.focus = True
+                _button.text = fa("متن را دستی انتخاب و کپی کنید")
+
+        copy_button.bind(on_press=copy_report)
+        close_button.bind(on_press=popup.dismiss)
+        popup.open()
+
     def show_result(self, results):
+        # Keep only diagnostic response data; never store API credentials.
+        self.last_diagnostics = dict(results or {})
         self.check_button.disabled = False
         self.check_button.text = fa("بررسی دوباره اتصال")
         website_ok = "website" in results and 200 <= results["website"] < 400
