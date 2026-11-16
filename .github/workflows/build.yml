@@ -1,5 +1,4 @@
 name: Build Android APK
-# Fresh build trigger after Actions storage cleanup.
 
 on:
   workflow_dispatch:
@@ -14,7 +13,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,26 +26,21 @@ jobs:
       - name: Install system dependencies and fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip build-essential \
-            autoconf automake autoconf-archive libtool libtool-bin pkg-config \
-            zlib1g-dev libncurses5-dev libffi-dev libssl-dev cmake fonts-noto-core
+          sudo apt-get install -y git zip unzip build-essential autoconf automake autoconf-archive libtool libtool-bin pkg-config zlib1g-dev libncurses5-dev libffi-dev libssl-dev cmake fonts-noto-core
 
       - name: Bundle Persian and Latin UI fonts
         run: |
           set -eu
           mkdir -p assets
-          ARABIC_SANS="$(find /usr/share/fonts -type f -iname 'NotoSansArabic-Regular.ttf' -print -quit)"
           ARABIC_NASKH="$(find /usr/share/fonts -type f -iname 'NotoNaskhArabic-Regular.ttf' -print -quit)"
+          ARABIC_SANS="$(find /usr/share/fonts -type f -iname 'NotoSansArabic-Regular.ttf' -print -quit)"
           LATIN_SANS="$(find /usr/share/fonts -type f -iname 'NotoSans-Regular.ttf' -print -quit)"
-          # Noto Naskh Arabic is required and preferred because it fixed
-          # Persian/Arabic shaping and missing glyphs in the earlier APK.
           if [ -z "$ARABIC_NASKH" ]; then
             echo "Required NotoNaskhArabic-Regular.ttf was not found" >&2
             exit 1
           fi
           cp "$ARABIC_NASKH" assets/NotoNaskhArabic-Regular.ttf
           cp "$ARABIC_NASKH" NotoNaskhArabic-Regular.ttf
-          # Also bundle Noto Sans Arabic as a secondary fallback when present.
           if [ -n "$ARABIC_SANS" ]; then
             cp "$ARABIC_SANS" assets/NotoSansArabic-Regular.ttf
             cp "$ARABIC_SANS" NotoSansArabic-Regular.ttf
@@ -79,26 +72,19 @@ jobs:
           from market_symbols import select_market_symbol
           from orderbook import parse_order_book
           from risk_analysis import analyze_klines, calculate_position_risk
-
           base = "https://api1.tabdeal.org/r/fapi/v1"
           def get(path, params=None):
               url = base + path
               if params:
                   url += "?" + urllib.parse.urlencode(params)
-              request = urllib.request.Request(
-                  url,
-                  headers={"User-Agent": "FuturesAnalyzer-SmokeTest/1.0", "Accept": "application/json"},
-              )
+              request = urllib.request.Request(url, headers={"User-Agent": "FuturesAnalyzer-SmokeTest/1.0", "Accept": "application/json"})
               with urllib.request.urlopen(request, timeout=25) as response:
                   if response.status != 200:
                       raise RuntimeError("{} returned HTTP {}".format(path, response.status))
                   return json.loads(response.read().decode("utf-8"))
-
           get("/ping")
           info = get("/exchangeInfo")
-          symbols = info if isinstance(info, list) else info.get(
-              "symbols", info.get("data", {}).get("symbols", [])
-          )
+          symbols = info if isinstance(info, list) else info.get("symbols", info.get("data", {}).get("symbols", []))
           symbol = select_market_symbol(symbols, "BTCUSDT")
           book = get("/depth", {"symbol": symbol, "limit": 5})
           bids, asks = parse_order_book(book)
@@ -110,21 +96,15 @@ jobs:
           candle_ok = False
           for candle_symbol in (symbol.replace("_", ""), symbol):
               try:
-                  candles = get("/klines", {
-                      "symbol": candle_symbol, "interval": "1h", "limit": 100
-                  })
+                  candles = get("/klines", {"symbol": candle_symbol, "interval": "1h", "limit": 100})
                   indicators = analyze_klines(candles)
                   if not 0 <= indicators["rsi14"] <= 100:
                       raise RuntimeError("RSI validation failed")
                   candle_ok = True
                   break
               except urllib.error.HTTPError as exc:
-                  print("Optional candles unavailable for {}: HTTP {}".format(
-                      candle_symbol, exc.code
-                  ))
-          print("LIVE TABDEAL API OK: symbol={}, bid={}, ask={}, candles={}, risk={}".format(
-              symbol, bids[0][0], asks[0][0], candle_ok, risk["risk_amount"]
-          ))
+                  print("Optional candles unavailable for {}: HTTP {}".format(candle_symbol, exc.code))
+          print("LIVE TABDEAL API OK: symbol={}, bid={}, ask={}, candles={}, risk={}".format(symbol, bids[0][0], asks[0][0], candle_ok, risk["risk_amount"]))
           PY
 
       - name: Install Buildozer
@@ -149,25 +129,12 @@ jobs:
           unzip -p "$APK" assets/private.tar > /tmp/apk-check/private.tar
           test -s /tmp/apk-check/private.tar
           tar -tf /tmp/apk-check/private.tar > /tmp/apk-check/files.txt
-          grep -Eq '(^|/)NotoNaskhArabic-Regular\.ttf
+          grep -Eq '(^|/)NotoNaskhArabic-Regular\.ttf$' /tmp/apk-check/files.txt
           if [ -s NotoSans-Regular.ttf ]; then
             grep -Eq '(^|/)NotoSans-Regular\.ttf$' /tmp/apk-check/files.txt
           fi
           echo "Required Arabic font and optional Latin font are packaged."
-      
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Futures-Analyzer-APK
-          path: bin/*.apk
-          if-no-files-found: error
-          retention-days: 7
- /tmp/apk-check/files.txt
-          if [ -s NotoSans-Regular.ttf ]; then
-            grep -Eq '(^|/)NotoSans-Regular\.ttf$' /tmp/apk-check/files.txt
-          fi
-          echo "Required Arabic font and optional Latin font are packaged."
-      
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
