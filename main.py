@@ -27,7 +27,7 @@ from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
-from kivy.uix.spinner import Spinner
+from kivy.uix.spinner import Spinner, SpinnerOption
 from kivy.core.window import Window
 from kivy.core.text import LabelBase
 from kivy.resources import resource_add_path, resource_find
@@ -106,6 +106,15 @@ if LATIN_FONT_PATH:
         NUMERIC_FONT_NAME = "Roboto"
 else:
     NUMERIC_FONT_NAME = "Roboto"
+
+
+class MarketSymbolOption(SpinnerOption):
+    """Force ASCII ticker rows in the market-symbol dropdown to use a Latin font."""
+    def __init__(self, **kwargs):
+        kwargs.setdefault("font_name", NUMERIC_FONT_NAME)
+        kwargs.setdefault("font_size", sp(15))
+        kwargs.setdefault("color", (1, 1, 1, 1))
+        super().__init__(**kwargs)
 
 
 def font_for_text(text):
@@ -188,6 +197,7 @@ class FuturesAnalyzerApp(App):
             values=(self.current_symbol,),
             font_name=NUMERIC_FONT_NAME,
             font_size=sp(16),
+            option_cls=MarketSymbolOption,
             size_hint_y=None,
             height=dp(46),
             background_normal="",
@@ -329,13 +339,24 @@ class FuturesAnalyzerApp(App):
     def update_symbol_options(self, symbols):
         if not symbols:
             return
+        # Keep every dropdown item strictly ASCII and render it with the
+        # bundled Latin face. This avoids Android/Kivy tofu squares in the
+        # Spinner's popup rows even when the closed Spinner looks correct.
+        clean_symbols = tuple(
+            str(symbol).strip().upper()
+            for symbol in symbols
+            if str(symbol).strip() and str(symbol).isascii()
+        )
+        if not clean_symbols:
+            return
         current = self.current_symbol
-        self.symbol_spinner.values = tuple(symbols)
-        if current in symbols:
+        self.symbol_spinner.values = clean_symbols
+        self.symbol_spinner.font_name = NUMERIC_FONT_NAME
+        if current in clean_symbols:
             self.symbol_spinner.text = current
         else:
-            self.symbol_spinner.text = symbols[0]
-            self.current_symbol = symbols[0]
+            self.symbol_spinner.text = clean_symbols[0]
+            self.current_symbol = clean_symbols[0]
 
     def show_status(self, instance):
         self.check_button.disabled = True
