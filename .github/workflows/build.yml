@@ -1,0 +1,161 @@
+name: Build Android APK
+# Fresh build trigger after Actions storage cleanup.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'main.py'
+      - 'buildozer.spec'
+      - '.github/workflows/build.yml'
+      - 'orderbook.py'
+      - 'tests/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install system dependencies and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip build-essential \
+            autoconf automake autoconf-archive libtool libtool-bin pkg-config \
+            zlib1g-dev libncurses5-dev libffi-dev libssl-dev cmake fonts-noto-core
+
+      - name: Bundle Persian and Latin UI fonts
+        run: |
+          set -eu
+          mkdir -p assets
+          ARABIC_SANS="$(find /usr/share/fonts -type f -iname 'NotoSansArabic-Regular.ttf' -print -quit)"
+          ARABIC_NASKH="$(find /usr/share/fonts -type f -iname 'NotoNaskhArabic-Regular.ttf' -print -quit)"
+          LATIN_SANS="$(find /usr/share/fonts -type f -iname 'NotoSans-Regular.ttf' -print -quit)"
+          if [ -n "$ARABIC_SANS" ]; then
+            cp "$ARABIC_SANS" assets/NotoSansArabic-Regular.ttf
+            cp "$ARABIC_SANS" NotoSansArabic-Regular.ttf
+          elif [ -n "$ARABIC_NASKH" ]; then
+            cp "$ARABIC_NASKH" assets/NotoNaskhArabic-Regular.ttf
+            cp "$ARABIC_NASKH" NotoNaskhArabic-Regular.ttf
+          else
+            echo "No Arabic-capable Noto font found" >&2
+            exit 1
+          fi
+          if [ -n "$LATIN_SANS" ]; then
+            cp "$LATIN_SANS" assets/NotoSans-Regular.ttf
+            cp "$LATIN_SANS" NotoSans-Regular.ttf
+          fi
+          ls -lh Noto*.ttf assets/*.ttf
+          test -s NotoSansArabic-Regular.ttf -o -s NotoNaskhArabic-Regular.ttf
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run regression tests
+        run: |
+          python -m pip install --upgrade pip
+          python -m unittest discover -s tests -v
+
+      - name: Smoke test live Tabdeal Futures API and order book
+        run: |
+          python - <<'PY'
+          import json
+          import urllib.parse
+          import urllib.request
+          import urllib.error
+          from market_symbols import select_market_symbol
+          from orderbook import parse_order_book
+          from risk_analysis import analyze_klines, calculate_position_risk
+
+          base = "https://api1.tabdeal.org/r/fapi/v1"
+          def get(path, params=None):
+              url = base + path
+              if params:
+                  url += "?" + urllib.parse.urlencode(params)
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "FuturesAnalyzer-SmokeTest/1.0", "Accept": "application/json"},
+              )
+              with urllib.request.urlopen(request, timeout=25) as response:
+                  if response.status != 200:
+                      raise RuntimeError("{} returned HTTP {}".format(path, response.status))
+                  return json.loads(response.read().decode("utf-8"))
+
+          get("/ping")
+          info = get("/exchangeInfo")
+          symbols = info if isinstance(info, list) else info.get(
+              "symbols", info.get("data", {}).get("symbols", [])
+          )
+          symbol = select_market_symbol(symbols, "BTCUSDT")
+          book = get("/depth", {"symbol": symbol, "limit": 5})
+          bids, asks = parse_order_book(book)
+          if not bids or not asks or asks[0][0] < bids[0][0]:
+              raise RuntimeError("Live order book failed validation")
+          risk = calculate_position_risk(8, 0.5, bids[0][0], 1, 1, 2)
+          if risk["risk_amount"] > 0.0400001:
+              raise RuntimeError("8 USDT capital risk cap failed")
+          candle_ok = False
+          for candle_symbol in (symbol.replace("_", ""), symbol):
+              try:
+                  candles = get("/klines", {
+                      "symbol": candle_symbol, "interval": "1h", "limit": 100
+                  })
+                  indicators = analyze_klines(candles)
+                  if not 0 <= indicators["rsi14"] <= 100:
+                      raise RuntimeError("RSI validation failed")
+                  candle_ok = True
+                  break
+              except urllib.error.HTTPError as exc:
+                  print("Optional candles unavailable for {}: HTTP {}".format(
+                      candle_symbol, exc.code
+                  ))
+          print("LIVE TABDEAL API OK: symbol={}, bid={}, ask={}, candles={}, risk={}".format(
+              symbol, bids[0][0], asks[0][0], candle_ok, risk["risk_amount"]
+          ))
+          PY
+
+      - name: Install Buildozer
+        run: |
+          python -m pip install --upgrade setuptools wheel
+          pip install buildozer==1.5.0 cython==0.29.36
+
+      - name: Bundle Persian RTL libraries
+        run: |
+          python -m pip install --target vendor arabic-reshaper==3.0.0 python-bidi==0.4.2 future==1.0.0
+
+      - name: Build APK
+        run: buildozer android debug
+
+      - name: Verify font packaging
+        run: |
+          set -eu
+          APK="$(find bin -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          echo "APK: $APK"
+          mkdir -p /tmp/apk-check
+          unzip -p "$APK" assets/private.tar > /tmp/apk-check/private.tar
+          test -s /tmp/apk-check/private.tar
+          tar -tf /tmp/apk-check/private.tar > /tmp/apk-check/files.txt
+          grep -Eq '(^|/)NotoSansArabic-Regular\.ttf$|(^|/)NotoNaskhArabic-Regular\.ttf$' /tmp/apk-check/files.txt
+          if [ -s NotoSans-Regular.ttf ]; then
+            grep -Eq '(^|/)NotoSans-Regular\.ttf$' /tmp/apk-check/files.txt
+          fi
+          echo "Required Arabic font and optional Latin font are packaged."
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Futures-Analyzer-APK
+          path: bin/*.apk
+          if-no-files-found: error
+          retention-days: 7
