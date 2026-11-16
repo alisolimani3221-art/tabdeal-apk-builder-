@@ -39,22 +39,25 @@ jobs:
           ARABIC_SANS="$(find /usr/share/fonts -type f -iname 'NotoSansArabic-Regular.ttf' -print -quit)"
           ARABIC_NASKH="$(find /usr/share/fonts -type f -iname 'NotoNaskhArabic-Regular.ttf' -print -quit)"
           LATIN_SANS="$(find /usr/share/fonts -type f -iname 'NotoSans-Regular.ttf' -print -quit)"
+          # Noto Naskh Arabic is required and preferred because it fixed
+          # Persian/Arabic shaping and missing glyphs in the earlier APK.
+          if [ -z "$ARABIC_NASKH" ]; then
+            echo "Required NotoNaskhArabic-Regular.ttf was not found" >&2
+            exit 1
+          fi
+          cp "$ARABIC_NASKH" assets/NotoNaskhArabic-Regular.ttf
+          cp "$ARABIC_NASKH" NotoNaskhArabic-Regular.ttf
+          # Also bundle Noto Sans Arabic as a secondary fallback when present.
           if [ -n "$ARABIC_SANS" ]; then
             cp "$ARABIC_SANS" assets/NotoSansArabic-Regular.ttf
             cp "$ARABIC_SANS" NotoSansArabic-Regular.ttf
-          elif [ -n "$ARABIC_NASKH" ]; then
-            cp "$ARABIC_NASKH" assets/NotoNaskhArabic-Regular.ttf
-            cp "$ARABIC_NASKH" NotoNaskhArabic-Regular.ttf
-          else
-            echo "No Arabic-capable Noto font found" >&2
-            exit 1
           fi
           if [ -n "$LATIN_SANS" ]; then
             cp "$LATIN_SANS" assets/NotoSans-Regular.ttf
             cp "$LATIN_SANS" NotoSans-Regular.ttf
           fi
           ls -lh Noto*.ttf assets/*.ttf
-          test -s NotoSansArabic-Regular.ttf -o -s NotoNaskhArabic-Regular.ttf
+          test -s NotoNaskhArabic-Regular.ttf
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -146,7 +149,20 @@ jobs:
           unzip -p "$APK" assets/private.tar > /tmp/apk-check/private.tar
           test -s /tmp/apk-check/private.tar
           tar -tf /tmp/apk-check/private.tar > /tmp/apk-check/files.txt
-          grep -Eq '(^|/)NotoSansArabic-Regular\.ttf$|(^|/)NotoNaskhArabic-Regular\.ttf$' /tmp/apk-check/files.txt
+          grep -Eq '(^|/)NotoNaskhArabic-Regular\.ttf
+          if [ -s NotoSans-Regular.ttf ]; then
+            grep -Eq '(^|/)NotoSans-Regular\.ttf$' /tmp/apk-check/files.txt
+          fi
+          echo "Required Arabic font and optional Latin font are packaged."
+      
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Futures-Analyzer-APK
+          path: bin/*.apk
+          if-no-files-found: error
+          retention-days: 7
+ /tmp/apk-check/files.txt
           if [ -s NotoSans-Regular.ttf ]; then
             grep -Eq '(^|/)NotoSans-Regular\.ttf$' /tmp/apk-check/files.txt
           fi
