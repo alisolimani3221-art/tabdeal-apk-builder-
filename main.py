@@ -36,17 +36,13 @@ from risk_analysis import analyze_klines, calculate_position_risk, recommend_lev
 from paper_trader import PaperTradingEngine
 
 # Resolve the bundled font from both the app directory and Kivy resources.
-# Resolve bundled Arabic/Persian font robustly. Prefer Noto Sans Arabic, which
-# covers Persian letters and Latin digits in one face; also check Android's
-# system Noto font locations as a last-resort fallback.
+# Prefer the same bundled Noto Naskh Arabic face that fixed missing Persian
+# glyphs in the earlier tested build. Keep Noto Sans Arabic as a fallback.
 FONT_CANDIDATES = [
-    # Use Noto Sans Arabic as the app-wide default: Kivy widgets that implicitly
-    # request Roboto (buttons, spinners, popup titles, text inputs) must also
-    # receive Persian glyphs, not only labels explicitly styled as Persian.
-    os.path.join(BASE_DIR, "NotoSansArabic-Regular.ttf"),
-    os.path.join(BASE_DIR, "assets", "NotoSansArabic-Regular.ttf"),
     os.path.join(BASE_DIR, "NotoNaskhArabic-Regular.ttf"),
     os.path.join(BASE_DIR, "assets", "NotoNaskhArabic-Regular.ttf"),
+    os.path.join(BASE_DIR, "NotoSansArabic-Regular.ttf"),
+    os.path.join(BASE_DIR, "assets", "NotoSansArabic-Regular.ttf"),
     "/system/fonts/NotoNaskhArabicUI-Regular.ttf",
     "/system/fonts/NotoNaskhArabic-Regular.ttf",
     "/system/fonts/NotoSansArabic-Regular.ttf",
