@@ -125,6 +125,7 @@ jobs:
                 "; checked Arabic glyphs:", len(required))
           PY
 
+      # Rebuild after the standalone diagnostic formatting correction.
       - name: Build debug APK
         working-directory: source
         run: buildozer android debug
