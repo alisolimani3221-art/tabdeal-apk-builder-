@@ -1,12 +1,9 @@
-# Tabdeal APK Builder
+# Legacy APK builder (retired)
 
-This public repository contains only the build workflow. The application source remains in the private repository.
+This repository is retained for history only. It contains an older application snapshot and must not be used to produce installable APKs.
 
-## One-time setup
+**Canonical source and build pipeline:** https://github.com/alisolimani3221-art/tabdeal-pro-bot-free
 
-1. Create a fine-grained GitHub personal access token with access only to `alisolimani3221-art/tabdeal-pro-bot` and **Contents: Read-only** permission.
-2. In this repository, open **Settings → Secrets and variables → Actions → New repository secret**.
-3. Add the secret named `PRIVATE_REPO_TOKEN` and paste the token value. Never commit or share the token.
-4. Open **Actions → Build Tabdeal APK → Run workflow**.
+Use the **Build Futures Analyzer APK** workflow in the canonical repository. That workflow builds from the current source, runs the regression suite, verifies the bundled Persian/Latin fonts and RTL libraries, and uploads the APK.
 
-The workflow checks out the private source, runs its tests, builds the Android APK, and uploads the APK as the `Tabdeal-Android-APK` artifact. Standard GitHub-hosted runners are free for public repositories.
+The old workflows in this repository have been disabled so they cannot silently produce APKs from stale source code. No private-repository token is required here.
